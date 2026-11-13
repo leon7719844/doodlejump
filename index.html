@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Mondmaul – Hüpfen & Schießen</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#10152b;color:#fff;font-family:system-ui,-apple-system,Segoe UI,sans-serif;display:grid;place-items:center;overflow:hidden}.wrap{width:min(100vw,480px);position:relative}canvas{display:block;width:100%;height:auto;max-height:100vh;background:#a9e8ff;border:3px solid #fff;border-radius:16px;box-shadow:0 12px 50px #0008;touch-action:none}.hud{position:absolute;inset:12px 14px auto;display:flex;justify-content:space-between;pointer-events:none;text-shadow:0 2px 3px #26405c;font-weight:800;font-size:15px}.hint{position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:12px;color:#23455b;text-shadow:0 1px #fff9;pointer-events:none}.overlay{position:absolute;inset:0;display:grid;place-items:center;background:#10152b99;border-radius:16px;text-align:center;padding:24px}.card{background:#fff;color:#19243a;border-radius:20px;padding:24px 22px;max-width:340px;box-shadow:0 8px 30px #0004}.card h1{margin:0 0 8px;font-size:28px}.card p{margin:7px 0;line-height:1.45}.card button{border:0;border-radius:12px;background:#ffb52e;color:#382600;font-weight:900;font-size:17px;padding:12px 24px;margin-top:12px;cursor:pointer}.controls{display:none;position:absolute;bottom:22px;left:14px;right:14px;justify-content:space-between;pointer-events:none}.controls button{pointer-events:auto;border:2px solid #ffffff99;background:#18375488;color:white;border-radius:50%;width:62px;height:62px;font-weight:900;font-size:23px;touch-action:none}@media(pointer:coarse){.controls{display:flex}.hint{bottom:94px}}
+</style>
+</head>
+<body>
+<main class="wrap">
+ <canvas id="game" width="480" height="720" aria-label="Mondmaul Hüpfspiel"></canvas>
+ <div class="hud"><span id="score">Höhe: 0 m</span><span id="gear">Ausrüstung: —</span></div>
+ <div class="hint">← → / A D bewegen · Leertaste oder antippen: Kugel schießen</div>
+ <div class="controls"><button id="left" aria-label="Links">◀</button><button id="fire" aria-label="Schießen">●</button><button id="right" aria-label="Rechts">▶</button></div>
+ <div class="overlay" id="overlay"><div class="card"><h1>🌙 Mondmaul</h1><p>Hüpfe immer höher! Das kleine Mondwesen schießt Kugeln aus seinem Mund.</p><p>Ab <b>700 m</b> tauchen Gegner auf. Sammle Jetpacks, Spiralfedern und Propellerhüte!</p><p><b>← →</b> bewegen · <b>Leertaste</b> schießen</p><button id="start">Los geht's!</button></div></div>
+</main>
+<script>
+(()=>{
+const canvas=document.querySelector('#game'),ctx=canvas.getContext('2d'),W=canvas.width,H=canvas.height;
+const scoreEl=document.querySelector('#score'),gearEl=document.querySelector('#gear'),overlay=document.querySelector('#overlay');
+const keys={left:false,right:false,fire:false};let running=false,player,platforms,items,enemies,shots,enemyShots,cameraY,highScore=0,lastShot=0,elapsed=0,gear='',gearTime=0,worldTop=0,frame=0;
+const rand=(a,b)=>a+Math.random()*(b-a);
+function makePlatform(y,x=rand(18,W-100),type='normal'){return{x,y,w:type==='wide'?104:rand(68,88),h:13,type,used:false}}
+function reset(){player={x:W/2,y:H-140,vx:0,vy:-10.7,r:20,face:1};platforms=[makePlatform(H-70, W/2-45,'wide')];for(let y=H-170;y>-H*2;y-=rand(78,116))platforms.push(makePlatform(y));items=[];enemies=[];shots=[];enemyShots=[];cameraY=0;highScore=0;elapsed=0;gear='';gearTime=0;worldTop=0;lastShot=0;frame=0;running=true;overlay.style.display='none'}
+function bindHold(id,key){const el=document.getElementById(id);el.addEventListener('pointerdown',e=>{e.preventDefault();keys[key]=true;el.setPointerCapture?.(e.pointerId)});for(const ev of ['pointerup','pointercancel','lostpointercapture'])el.addEventListener(ev,()=>keys[key]=false)}
+bindHold('left','left');bindHold('right','right');bindHold('fire','fire');
+window.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight',' ','a','d','A','D'].includes(e.key))e.preventDefault();if(e.key==='ArrowLeft'||e.key.toLowerCase()==='a')keys.left=true;if(e.key==='ArrowRight'||e.key.toLowerCase()==='d')keys.right=true;if(e.key===' ')keys.fire=true;if(!running&&(e.key==='Enter'||e.key===' '))reset()});window.addEventListener('keyup',e=>{if(e.key==='ArrowLeft'||e.key.toLowerCase()==='a')keys.left=false;if(e.key==='ArrowRight'||e.key.toLowerCase()==='d')keys.right=false;if(e.key===' ')keys.fire=false});
+document.querySelector('#start').onclick=reset;
+function addWorld(){let highest=Math.min(...platforms.map(p=>p.y));while(highest>cameraY-220){highest-=rand(78,118);platforms.push(makePlatform(highest));if(highScore>180&&Math.random()<.12)platforms[platforms.length-1].type='moving';if(highScore>120&&Math.random()<.13){const types=['spring','jetpack','propeller'];let t=Math.random()<.13?'jetpack':Math.random()<.5?'spring':'propeller';items.push({x:rand(28,W-28),y:highest-27,type:t,used:false})}if(highScore>=700&&Math.random()<.15)enemies.push({x:rand(25,W-50),y:highest-rand(35,110),r:19,vx:rand(-1.3,1.3),hp:2,phase:rand(0,6)})}}
+function shoot(){if(!keys.fire||performance.now()-lastShot<260)return;lastShot=performance.now();shots.push({x:player.x+player.face*17,y:player.y-3,vx:player.face*5.2,vy:-7,life:80})}
+function collect(item){if(item.used)return;item.used=true;if(item.type==='spring'){player.vy=-19;gear='Spiralfeder';gearTime=1100}else if(item.type==='jetpack'){player.vy=-22;gear='Jetpack';gearTime=1000}else{gear='Propellerhut';gearTime=800}}
+function update(){if(!running)return;frame++;elapsed++;if(gearTime>0)gearTime--;else if(gear)gear='';player.vx=(keys.right?4.7:0)-(keys.left?4.7:0);if(player.vx)player.face=Math.sign(player.vx);if(gear==='Propellerhut'){player.vy=Math.min(player.vy, -2.35);if(frame%8===0)player.vy-=.16}else player.vy+=.34;player.vy=Math.min(player.vy,14);player.x+=player.vx;player.y+=player.vy;if(player.x<-player.r)player.x=W+player.r;if(player.x>W+player.r)player.x=-player.r;
+ for(const p of platforms){if(p.type==='moving'){p.x+=Math.sin((frame+p.y)*.025)*.8;p.x=Math.max(2,Math.min(W-p.w-2,p.x))}if(player.vy>0&&player.x+player.r>p.x&&player.x-player.r<p.x+p.w&&player.y+player.r>=p.y&&player.y+player.r<=p.y+18){player.y=p.y-player.r;player.vy=p.type==='spring'?-18:-10.8}}
+ for(const it of items)if(!it.used&&Math.hypot(player.x-it.x,player.y-it.y)<player.r+18)collect(it);
+ shoot();for(const s of shots){s.x+=s.vx;s.y+=s.vy;s.life--;for(const e of enemies)if(e.hp>0&&Math.hypot(s.x-e.x,s.y-e.y)<e.r+5){e.hp--;s.life=0}}shots=shots.filter(s=>s.life>0&&s.x>-10&&s.x<W+10);
+ if(highScore>=700){for(const e of enemies){if(e.hp<=0)continue;e.x+=e.vx;e.phase+=.04;e.y+=Math.sin(e.phase)*.45;if(e.x<e.r||e.x>W-e.r)e.vx*=-1;if(frame%100===0)enemyShots.push({x:e.x,y:e.y+e.r,vx:(player.x-e.x)*.006,vy:2.5})}for(const b of enemyShots){b.x+=b.vx;b.y+=b.vy;if(Math.hypot(b.x-player.x,b.y-player.y)<player.r+5){b.gone=true;if(gear==='Propellerhut')gear='';else player.vy=Math.max(player.vy,4)}}enemyShots=enemyShots.filter(b=>!b.gone&&b.y<H+20)}
+ if(player.y-cameraY<H*.42)cameraY=player.y-H*.42;highScore=Math.max(highScore,Math.floor((H-140-player.y)/10));worldTop=Math.min(worldTop,cameraY);addWorld();platforms=platforms.filter(p=>p.y<cameraY+H+80);items=items.filter(i=>!i.used&&i.y<cameraY+H+50);enemies=enemies.filter(e=>e.hp>0&&e.y<cameraY+H+80);scoreEl.textContent=`Höhe: ${Math.max(0,highScore)} m`;gearEl.textContent=gear?`Ausrüstung: ${gear}`:'Ausrüstung: —';if(player.y-cameraY>H+55)gameOver()}
+function draw(){ctx.clearRect(0,0,W,H);let grad=ctx.createLinearGradient(0,0,0,H);grad.addColorStop(0,'#83dcff');grad.addColorStop(1,'#e5faff');ctx.fillStyle=grad;ctx.fillRect(0,0,W,H);ctx.fillStyle='#ffffff88';for(let i=0;i<7;i++){let x=(i*97+32)%W,y=((i*137-cameraY*.2)%H+H)%H;ctx.beginPath();ctx.ellipse(x,y,24,7,0,0,Math.PI*2);ctx.ellipse(x+20,y+2,18,6,0,0,Math.PI*2);ctx.fill()}
+ for(const p of platforms){let y=p.y-cameraY;ctx.fillStyle=p.type==='moving'?'#78b857':'#52a85c';ctx.beginPath();ctx.roundRect(p.x,y,p.w,p.h,7);ctx.fill();ctx.fillStyle='#b8e889';ctx.fillRect(p.x+8,y+2,p.w-16,3);if(p.type==='spring'){ctx.strokeStyle='#ff5a9e';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(p.x+p.w/2,y);ctx.lineTo(p.x+p.w/2-6,y-7);ctx.lineTo(p.x+p.w/2+6,y-14);ctx.lineTo(p.x+p.w/2,y-21);ctx.stroke()}}
+ for(const it of items){if(it.used)continue;let y=it.y-cameraY;ctx.font='27px sans-serif';ctx.textAlign='center';ctx.fillText(it.type==='jetpack'?'🚀':it.type==='spring'?'🌀':'🎩',it.x,y+8)}
+ for(const e of enemies){if(e.hp<=0)continue;let y=e.y-cameraY;ctx.fillStyle='#8c4ac4';ctx.beginPath();ctx.arc(e.x,y,e.r,0,Math.PI*2);ctx.fill();ctx.fillStyle='white';ctx.beginPath();ctx.arc(e.x-6,y-3,5,0,7);ctx.arc(e.x+7,y-3,5,0,7);ctx.fill();ctx.fillStyle='#321e4d';ctx.fillRect(e.x-8,y+8,17,3)}
+ for(const b of enemyShots){ctx.fillStyle='#a546ce';ctx.beginPath();ctx.arc(b.x,b.y-cameraY,5,0,7);ctx.fill()}
+ for(const s of shots){ctx.fillStyle='#ff8b27';ctx.beginPath();ctx.arc(s.x,s.y-cameraY,5,0,7);ctx.fill();ctx.fillStyle='#fff5a8';ctx.beginPath();ctx.arc(s.x,s.y-cameraY,2,0,7);ctx.fill()}
+ // Mondwesen mit großem Mund – kein menschlicher Springer
+ let py=player.y-cameraY;ctx.save();ctx.translate(player.x,py);ctx.scale(player.face,1);ctx.fillStyle='#6653d9';ctx.beginPath();ctx.ellipse(0,0,player.r,player.r*.88,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#9f8cff';ctx.beginPath();ctx.ellipse(-4,-7,11,7,-.3,0,7);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(4,-6,5,0,7);ctx.fill();ctx.fillStyle='#25204e';ctx.beginPath();ctx.arc(6,-6,2.4,0,7);ctx.fill();ctx.fillStyle='#25204e';ctx.beginPath();ctx.ellipse(15,5,7,6,0,0,7);ctx.fill();ctx.fillStyle='#ffdf62';ctx.beginPath();ctx.arc(18,5,2,0,7);ctx.fill();ctx.fillStyle='#5140b8';ctx.beginPath();ctx.ellipse(-3,18,8,4,0,0,7);ctx.fill();if(gear==='Propellerhut'){ctx.font='25px sans-serif';ctx.textAlign='center';ctx.fillText('🎩',0,-27)}if(gear==='Jetpack'){ctx.fillStyle='#ff9f35';ctx.beginPath();ctx.moveTo(-14,8);ctx.lineTo(-27,18);ctx.lineTo(-16,20);ctx.fill()}ctx.restore();
+ if(highScore<700){ctx.fillStyle='#174057';ctx.font='bold 14px system-ui';ctx.textAlign='center';ctx.fillText('Erst ab 700 m erscheinen Gegner!',W/2,36)}requestAnimationFrame(loop)}
+function gameOver(){running=false;overlay.style.display='grid';overlay.querySelector('h1').textContent='🌙 Weiter geht’s?';overlay.querySelector('.card p').innerHTML=`Du bist <b>${Math.max(0,highScore)} m</b> hoch gekommen!`;overlay.querySelectorAll('.card p')[1].textContent='Sammle Ausrüstung und weiche den Gegnern aus.';overlay.querySelector('#start').textContent='Nochmal spielen'}
+function loop(){update();draw()}reset();running=false;overlay.style.display='grid';requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
